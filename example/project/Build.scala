@@ -30,7 +30,7 @@ object Build extends sbt.Build {
   def getInterfaceClass(name:String, compiler:sbt.compiler.AnalyzingCompiler, log:Logger, cp:Seq[File]) = {
     val url = compiler.provider(compiler.scalaInstance, log).toURI.toURL
     val urls = Seq(url) ++ cp.map(_.toURI.toURL)
-    val loader = new java.net.URLClassLoader(l2.getURLs, createDualLoader(compiler.scalaInstance.loader, getClass().getClassLoader())) {
+    val loader = new java.net.URLClassLoader(urls.toArray, createDualLoader(compiler.scalaInstance.loader, getClass().getClassLoader())) {
       override def loadClass(name:String):Class[_] = {
         val c:Class[_] = findLoadedClass(name)
         if(c != null) return c
