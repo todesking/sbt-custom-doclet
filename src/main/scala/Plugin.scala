@@ -16,14 +16,17 @@ object Plugin extends sbt.AutoPlugin {
     customDoc := {
       // from sbt.compiler.AnalyzingCompiler implementation
       val compiler:sbt.compiler.AnalyzingCompiler = Keys.compilers.value.scalac
+      val log = Keys.streams.value.log
       val dependencyClasspath = (Keys.fullClasspath in (Compile, Keys.doc)).value.map(_.data)
       val generatorName = customDocGenerator.value
-      val options = (Keys.scalacOptions).value ++ Opts.doc.externalAPI(Keys.apiMappings.value) ++ Seq("-doc-generator", generatorName)
+      val options = (Keys.scalacOptions in (Compile, Keys.doc)).value ++ Opts.doc.externalAPI(Keys.apiMappings.value) ++ Seq("-doc-generator", generatorName)
 
       val arguments = (new sbt.compiler.CompilerArguments(compiler.scalaInstance, compiler.cp))(
        (Keys.sources in (Compile, Keys.doc)).value, dependencyClasspath, Some(Keys.target.value), options)
 
-      val klass = getInterfaceClass("xsbt.ScaladocInterface", generatorName, compiler, Keys.streams.value.log, dependencyClasspath)
+     val loader = createClassLoader(compiler, log, dependencyClasspath)
+
+      val klass = loader.loadClass("xsbt.ScaladocInterface")
       val instance = klass.newInstance().asInstanceOf[AnyRef]
       val method = klass.getMethod("run", classOf[Array[String]], classOf[xsbti.Logger], classOf[xsbti.Reporter])
 
@@ -37,23 +40,19 @@ object Plugin extends sbt.AutoPlugin {
     }
   )
 
-  private[this] def getInterfaceClass(name:String, generatorName:String, compiler:sbt.compiler.AnalyzingCompiler, log:Logger, cp:Seq[File]) = {
+  private[this] def createClassLoader(compiler:sbt.compiler.AnalyzingCompiler, log:Logger, cp:Seq[File]):ClassLoader = {
     val url = compiler.provider(compiler.scalaInstance, log).toURI.toURL
-    val urls = Seq(url) ++ cp.map(_.toURI.toURL)
-    val loader = new java.net.URLClassLoader(urls.toArray, createDualLoader(compiler.scalaInstance.loader, getClass().getClassLoader())) {
+    val urls = compiler.scalaInstance.allJars.map(_.toURI.toURL) ++ Seq(url)
+
+    new java.net.URLClassLoader(urls.toArray, createDualLoader(compiler.scalaInstance.loader, getClass().getClassLoader())) {
       override def loadClass(name:String):Class[_] = {
         val c:Class[_] = findLoadedClass(name)
         if(c != null) return c
 
-        if(name != generatorName)
-          return super.loadClass(name)
-
         try findClass(name)
-        catch { case e:ClassNotFoundException => super.loadClass(name) }
+        catch { case e:ClassNotFoundException => getParent.loadClass(name) }
       }
     }
-
-    loader.loadClass(name)
   }
 
   private[this] def createDualLoader(scalaLoader: ClassLoader, sbtLoader: ClassLoader): ClassLoader =
@@ -64,4 +63,3 @@ object Plugin extends sbt.AutoPlugin {
   }
 
 }
-
