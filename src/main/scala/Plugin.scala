@@ -33,7 +33,7 @@ object Plugin extends sbt.AutoPlugin {
       val loaderClasspath =
         customDocGeneratorClass.value match {
           case Some(klass) => Seq(resourceURLOf(klass))
-          case None => Seq()
+          case None => dependencyClasspath.map(_.toURI.toURL)
         }
 
       log.info(s"customDoc additional classpath: $loaderClasspath")
