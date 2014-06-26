@@ -5,7 +5,9 @@ object Plugin extends sbt.AutoPlugin {
 
   object autoImport {
     val customDoc = taskKey[Unit]("Custom doc task")
-    val customDocGenerator = settingKey[String]("class name for -doc-generator")
+    val customDocAutoClasspath = settingKey[Boolean]("Create classpath automatically from customDocGenerator")
+    val customDocGeneratorName = settingKey[Option[String]]("Doc generator name")
+    val customDocGeneratorClass = settingKey[Option[Class[_]]]("Doc generator class. If the class is visible from sbt source, use this setting over customDocGeneratorName.")
   }
 
   import autoImport._
@@ -13,18 +15,33 @@ object Plugin extends sbt.AutoPlugin {
   override def trigger = allRequirements
 
   override val projectSettings = Seq(
+    customDocGeneratorName := None,
+    customDocGeneratorClass := None,
     customDoc := {
       // from sbt.compiler.AnalyzingCompiler implementation
       val compiler:sbt.compiler.AnalyzingCompiler = Keys.compilers.value.scalac
       val log = Keys.streams.value.log
       val dependencyClasspath = (Keys.fullClasspath in (Compile, Keys.doc)).value.map(_.data)
-      val generatorName = customDocGenerator.value
+      val generatorName = customDocGeneratorName.value getOrElse customDocGeneratorClass.value.get.getName
       val options = (Keys.scalacOptions in (Compile, Keys.doc)).value ++ Opts.doc.externalAPI(Keys.apiMappings.value) ++ Seq("-doc-generator", generatorName)
+
+      log.info(s"customDoc generator class: $generatorName")
 
       val arguments = (new sbt.compiler.CompilerArguments(compiler.scalaInstance, compiler.cp))(
        (Keys.sources in (Compile, Keys.doc)).value, dependencyClasspath, Some(Keys.target.value), options)
 
-      val loader = createClassLoader(compiler, log, dependencyClasspath)
+      val loaderClasspath =
+        customDocGeneratorClass.value match {
+          case Some(klass) => Seq(resourceURLOf(klass))
+          case None => Seq()
+        }
+
+      log.info(s"customDoc additional classpath: $loaderClasspath")
+
+      val loader = createClassLoader(compiler, log, loaderClasspath)
+
+      try { loader.loadClass(generatorName) }
+      catch { case e:ClassNotFoundException => throw new RuntimeException(s"customDoc generator class load failed: $generatorName (classpath: ${loader.getURLs.mkString(", ")})") }
 
       val klass = loader.loadClass("xsbt.ScaladocInterface")
       val instance = klass.newInstance().asInstanceOf[AnyRef]
@@ -40,9 +57,20 @@ object Plugin extends sbt.AutoPlugin {
     }
   )
 
-  private[this] def createClassLoader(compiler:sbt.compiler.AnalyzingCompiler, log:Logger, cp:Seq[File]):ClassLoader = {
+  private[this] def resourceURLOf(klass:Class[_]):java.net.URL = {
+    // OH....
+    val resourceName = klass.getName.split("\\.").mkString("/") + ".class"
+    val location = klass.getClassLoader.getResource(resourceName).toString
+    val root = location.substring(0, location.length - resourceName.length)
+    if(root.endsWith("!")) // jar
+      new java.net.URL(root.substring(0, root.length - 1))
+    else
+      new java.net.URL(root)
+  }
+
+  private[this] def createClassLoader(compiler:sbt.compiler.AnalyzingCompiler, log:Logger, cp:Seq[URL]):java.net.URLClassLoader = {
     val url = compiler.provider(compiler.scalaInstance, log).toURI.toURL
-    val urls = compiler.scalaInstance.allJars.map(_.toURI.toURL) ++ Seq(url)
+    val urls = cp ++ compiler.scalaInstance.allJars.map(_.toURI.toURL) ++ Seq(url)
 
     new java.net.URLClassLoader(urls.toArray, createDualLoader(compiler.scalaInstance.loader, getClass().getClassLoader())) {
       override def loadClass(name:String):Class[_] = {

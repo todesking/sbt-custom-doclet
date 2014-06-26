@@ -8,7 +8,7 @@ object Build extends sbt.Build{
     "example",
     file("."),
     settings = Seq(
-      customDocGenerator := "com.todesking.example.DocGen"
+      customDocGeneratorClass := Some(classOf[DocGen])
     )
   )
 }
