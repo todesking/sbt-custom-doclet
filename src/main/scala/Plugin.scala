@@ -24,7 +24,7 @@ object Plugin extends sbt.AutoPlugin {
       val arguments = (new sbt.compiler.CompilerArguments(compiler.scalaInstance, compiler.cp))(
        (Keys.sources in (Compile, Keys.doc)).value, dependencyClasspath, Some(Keys.target.value), options)
 
-     val loader = createClassLoader(compiler, log, dependencyClasspath)
+      val loader = createClassLoader(compiler, log, dependencyClasspath)
 
       val klass = loader.loadClass("xsbt.ScaladocInterface")
       val instance = klass.newInstance().asInstanceOf[AnyRef]
