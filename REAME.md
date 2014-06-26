@@ -5,6 +5,18 @@ This plugin enables scaladoc's `-doc-generator` feature.
 
 ## USAGE
 
+1. Setting sbt(described below)
+2. use `customDoc` task.
+
+## Enable plugin
+
+```scala
+// project/build.sbt
+addSbtPlugin("com.todesking" %% "sbt_custom_doc" % "0.0.1")
+```
+
+## Use inline doc-generator class
+
 ```scala
 // project/Build.scala
 package com.todesking.example
@@ -29,5 +41,13 @@ class DocGen extends scala.tools.nsc.doc.doclet.Generator {
 }
 ```
 
-and use `customDoc` task.
+## Use outer doc-generator class
 
+```scala
+// build.sbt
+customDocGeneratorName := "name.of.doc.generator"
+
+libraryDependencies in (Compile, doc) += "name.of.doc" %% "generator" % "1.0.0"
+```
+
+I not tested this yet :(
