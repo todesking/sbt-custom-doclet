@@ -5,9 +5,7 @@ object Plugin extends sbt.AutoPlugin {
 
   object autoImport {
     val customDoc = taskKey[Unit]("Custom doc task")
-    val customDocAutoClasspath = settingKey[Boolean]("Create classpath automatically from customDocGenerator")
-    val customDocGeneratorName = settingKey[Option[String]]("Doc generator name")
-    val customDocGeneratorClass = settingKey[Option[Class[_]]]("Doc generator class. If the class is visible from sbt source, use this setting over customDocGeneratorName.")
+    val customDocGeneratorClass = settingKey[Class[_]]("Doc generator class")
   }
 
   import autoImport._
@@ -15,14 +13,12 @@ object Plugin extends sbt.AutoPlugin {
   override def trigger = allRequirements
 
   override val projectSettings = Seq(
-    customDocGeneratorName := None,
-    customDocGeneratorClass := None,
     customDoc := {
       // from sbt.compiler.AnalyzingCompiler implementation
       val compiler:sbt.compiler.AnalyzingCompiler = Keys.compilers.value.scalac
       val log = Keys.streams.value.log
       val dependencyClasspath = (Keys.fullClasspath in (Compile, Keys.doc)).value.map(_.data)
-      val generatorName = customDocGeneratorName.value getOrElse customDocGeneratorClass.value.get.getName
+      val generatorName = customDocGeneratorClass.value.getName
       val options = (Keys.scalacOptions in (Compile, Keys.doc)).value ++ Opts.doc.externalAPI(Keys.apiMappings.value) ++ Seq("-doc-generator", generatorName)
 
       log.info(s"customDoc generator class: $generatorName")
@@ -30,11 +26,7 @@ object Plugin extends sbt.AutoPlugin {
       val arguments = (new sbt.compiler.CompilerArguments(compiler.scalaInstance, compiler.cp))(
        (Keys.sources in (Compile, Keys.doc)).value, dependencyClasspath, Some(Keys.target.value), options)
 
-      val loaderClasspath =
-        customDocGeneratorClass.value match {
-          case Some(klass) => Seq(resourceURLOf(klass))
-          case None => dependencyClasspath.map(_.toURI.toURL)
-        }
+      val loaderClasspath = Seq(resourceURLOf(customDocGeneratorClass.value))
 
       log.info(s"customDoc additional classpath: $loaderClasspath")
 
